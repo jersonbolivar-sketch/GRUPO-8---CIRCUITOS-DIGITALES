@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banco de Pruebas · Verificador CRC-8 + Sensor de Proximidad</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root{
+  --paper:#ffffff;
+  --paper-deep:#eeeeec;
+  --panel:#ffffff;
+  --panel-deep:#e7e5df;
+  --ink:#201d17;
+  --ink-soft:#57534a;
+  --line:#cfccc2;
+  --line-strong:#3a331f;
+  --brass:#a1793f;
+  --brass-light:#dbb46e;
+  --brass-dark:#6f5228;
+  --bezel:#1d1911;
+  --oled-bg:#161109;
+  --oled-fg:#f0b93f;
+  --oled-fg-dim:#7a5b26;
+  --green:#3c7a4c;
+  --green-glow:#6adf88;
+  --red:#8a3a34;
+  --red-glow:#e2645a;
+  --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  --sans:'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --plate:'Oswald', sans-serif;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{
+  background-color:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  padding:26px 16px 50px;
+}
+.wrap{max-width:1180px;margin:0 auto;}
+
+/* ============================================================
+   SCREW / RIVET decoration
+   ============================================================ */
+.screw{
+  position:absolute;width:9px;height:9px;border-radius:50%;
+  background:radial-gradient(circle at 33% 30%, #ece1c4, var(--brass) 55%, var(--brass-dark) 100%);
+  box-shadow:0 1px 1px rgba(0,0,0,.4) inset, 0 1px 0 rgba(255,255,255,.15);
+}
+.screw::after{
+  content:'';position:absolute;top:50%;left:12%;width:76%;height:1.4px;
+  background:rgba(30,24,10,.75);transform:translateY(-50%) rotate(28deg);
+}
+.screw.tl{top:7px;left:7px;} .screw.tr{top:7px;right:7px;}
+.screw.bl{bottom:7px;left:7px;} .screw.br{bottom:7px;right:7px;}
+
+/* ============================================================
+   NAMEPLATE / HEADER
+   ============================================================ */
+.nameplate-title{
+  text-align:center;
+  padding:6px 20px 22px;
+  margin-bottom:6px;
+  border-bottom:1px solid var(--line-strong);
+}
+.nameplate-title h1{
+  font-family:var(--plate);
+  text-transform:uppercase;
+  font-size:21px;
+  font-weight:600;
+  letter-spacing:.015em;
+  line-height:1.4;
+  margin:0 auto;
+  max-width:900px;
+  color:var(--ink);
+}
+
+/* ============================================================
+   GENERIC CARD
+   ============================================================ */
+.card{
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  border-radius:3px;
+  padding:18px 20px;
+  margin-bottom:18px;
+  box-shadow:0 1px 0 rgba(58,51,31,.12);
+}
+.card h2{
+  font-family:var(--plate);
+  font-size:14px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-weight:600;
+  color:var(--ink);
+  margin:0 0 4px;
+  padding-bottom:8px;
+  border-bottom:1px solid var(--line);
+}
+.card .desc{
+  color:var(--ink-soft);
+  font-size:12.5px;
+  margin:10px 0 14px;
+  line-height:1.55;
+}
+
+/* ============================================================
+   FRAME / REGISTER STRIPS (packet structure + live registers)
+   ============================================================ */
+.reg-strip{display:flex;gap:4px;flex-wrap:wrap;}
+.reg-cell{
+  flex:1 1 62px;min-width:62px;
+  border:1.4px solid var(--line-strong);
+  border-radius:2px;
+  background:var(--panel-deep);
+  text-align:center;
+  padding:7px 3px 6px;
+  position:relative;
+}
+.reg-cell.crc{background:#e8d6ad;border-color:var(--brass-dark);}
+.reg-cell .f{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.02em;color:var(--brass-dark);text-transform:uppercase;}
+.reg-cell .b{font-family:var(--mono);font-size:9.5px;color:var(--ink-soft);margin-top:2px;}
+.reg-cell .val{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink);margin-top:4px;}
+.reg-cell.empty .val{color:var(--line);}
+.reg-cell.cursor{outline:2px solid var(--brass);outline-offset:1px;background:#f3e6c4;}
+.reg-cell.hit-ok{background:#d6e8da;border-color:var(--green);}
+.reg-cell.hit-err{background:#f0d6d3;border-color:var(--red);}
+.reg-brace{font-size:10.5px;color:var(--ink-soft);margin-top:8px;display:flex;justify-content:space-between;font-family:var(--mono);}
+
+/* ============================================================
+   BOARDS (instrument fascia)
+   ============================================================ */
+.boards-section{display:flex;align-items:stretch;gap:12px;}
+@media (max-width:900px){
+  .boards-section{flex-direction:column;}
+  .uart-link{flex-direction:row !important;width:100%;height:auto !important;padding:8px 0;}
+  .uart-link .link-line{width:100% !important;height:3px !important;min-height:0 !important;}
+}
+
+.board{
+  position:relative;
+  flex:1;
+  background:linear-gradient(180deg, #f3f2ee, #e2e0d8);
+  border:1px solid var(--line-strong);
+  border-radius:4px;
+  padding:16px 15px 14px;
+  display:flex;flex-direction:column;gap:10px;
+  box-shadow:0 2px 0 rgba(58,51,31,.18), inset 0 0 0 1px rgba(255,255,255,.3);
+}
+.board-tag{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding-bottom:8px;border-bottom:1px solid var(--line-strong);
+}
+.board-chip{
+  font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.05em;
+  color:var(--panel);background:var(--ink);padding:2px 7px;border-radius:2px;
+}
+.board-name{font-family:var(--plate);font-size:15px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;}
+
+.pin-row{display:flex;gap:5px;flex-wrap:wrap;}
+.pin{
+  font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--ink-soft);
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;padding:2px 6px;
+}
+.pin.hi{color:var(--bezel);background:var(--brass-light);border-color:var(--brass-dark);}
+
+.board-body{display:flex;gap:13px;align-items:flex-start;flex-wrap:wrap;}
+
+/* OLED */
+.oled-frame{
+  background:var(--bezel);border-radius:5px;padding:8px;
+  box-shadow:inset 0 0 0 1px #322a19, 0 1px 0 rgba(255,255,255,.15);
+}
+.oled{
+  margin:0;position:relative;overflow:hidden;
+  background:var(--oled-bg);color:var(--oled-fg);
+  font-family:var(--mono);font-size:11px;line-height:1.55;
+  padding:9px 10px;border-radius:2px;
+  width:236px;min-height:120px;white-space:pre;
+  text-shadow:0 0 5px rgba(240,185,63,.45);
+}
+.oled::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 3px);
+}
+
+/* Sensor toggle (skeuomorphic rocker) */
+.sensor-unit{display:flex;flex-direction:column;gap:6px;align-items:center;}
+.sensor-label{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-soft);text-transform:uppercase;text-align:center;}
+.toggle{
+  width:70px;height:30px;border-radius:15px;position:relative;cursor:pointer;
+  background:linear-gradient(180deg,#3a3320,#221d12);
+  box-shadow:inset 0 2px 3px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.2);
+  border:1px solid var(--line-strong);
+}
+.toggle .thumb{
+  position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #f2e8cf, #b7a473 60%, #7a6a44);
+  box-shadow:0 1px 2px rgba(0,0,0,.5);
+  transition:left .18s ease;
+}
+.toggle.on{background:linear-gradient(180deg,#4a3620,#2c1f10);}
+.toggle.on .thumb{left:45px;background:radial-gradient(circle at 35% 30%, #ffd98a, var(--brass) 60%, var(--brass-dark));}
+.toggle-txt{font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--ink);}
+.toggle-txt.active{color:var(--brass-dark);}
+
+/* LEDs */
+.indicators{display:flex;flex-direction:column;gap:9px;}
+.led-wrap{display:flex;align-items:center;gap:8px;}
+.led{
+  width:16px;height:16px;border-radius:50%;
+  border:2px solid #4a4433;
+  background:radial-gradient(circle at 35% 30%, #efe9d6, #b9b193);
+  box-shadow:inset 0 0 2px rgba(0,0,0,.4);
+}
+.led-green.on{background:radial-gradient(circle at 35% 30%, #cdf5d6, var(--green-glow) 55%, var(--green));box-shadow:0 0 10px 3px rgba(106,223,136,.65), inset 0 0 2px rgba(0,0,0,.3);}
+.led-red.on{background:radial-gradient(circle at 35% 30%, #fbd9d5, var(--red-glow) 55%, var(--red));box-shadow:0 0 10px 3px rgba(226,100,90,.65), inset 0 0 2px rgba(0,0,0,.3);}
+.led-wrap label{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);}
+
+/* Buttons */
+.buttons{display:flex;flex-direction:column;gap:9px;}
+.btn-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;}
+.phys-btn{
+  font-family:var(--sans);font-size:11.5px;font-weight:700;color:var(--ink);
+  background:linear-gradient(180deg,#efe8d5,#d7cca9);
+  border:1px solid var(--line-strong);
+  border-bottom:3px solid var(--brass-dark);
+  border-radius:4px;padding:7px 13px;cursor:pointer;min-width:165px;text-align:left;
+  transition:transform .05s, background .15s;
+}
+.phys-btn:hover{background:linear-gradient(180deg,#f4eedd,#e0d5b2);}
+.phys-btn:active{transform:translateY(2px);border-bottom-width:1px;}
+.phys-btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-hint{font-family:var(--mono);font-size:9.5px;color:var(--ink-soft);padding-left:2px;}
+
+/* UART link */
+.uart-link{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;width:110px;flex-shrink:0;padding:10px 0;
+}
+.link-label{font-family:var(--mono);font-size:9.5px;color:var(--ink-soft);text-align:center;line-height:1.4;}
+.link-line{
+  position:relative;width:3px;flex:1;min-height:60px;
+  background:linear-gradient(var(--line-strong),var(--line-strong));
+  border-radius:2px;overflow:hidden;
+}
+.link-line::after{
+  content:'';position:absolute;left:-3px;width:9px;height:9px;border-radius:50%;
+  background:var(--brass);box-shadow:0 0 6px 2px rgba(161,121,63,.7);
+  top:-12px;opacity:0;
+}
+.uart-link.active .link-line::after{opacity:1;animation:flowDown .6s linear infinite;}
+@keyframes flowDown{from{top:-10px;}to{top:100%;}}
+.link-arrow{font-family:var(--mono);font-weight:700;font-size:10.5px;color:var(--brass-dark);background:var(--panel-deep);border:1px solid var(--line-strong);border-radius:3px;padding:3px 7px;}
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+.controls-section{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.control-group{display:flex;align-items:center;gap:7px;}
+.control-group label{font-size:11.5px;color:var(--ink-soft);font-weight:600;font-family:var(--mono);}
+select, .reset-btn{
+  font-family:var(--mono);font-size:11.5px;font-weight:600;
+  border:1px solid var(--line-strong);border-radius:3px;padding:7px 11px;
+  background:var(--panel);color:var(--ink);cursor:pointer;
+}
+.reset-btn{background:var(--ink);color:var(--panel);border-color:var(--ink);}
+.reset-btn:hover{background:#3a331f;}
+.status-pill{
+  font-family:var(--mono);font-size:11px;background:var(--bezel);color:var(--oled-fg);
+  border:1px solid var(--line-strong);border-radius:3px;padding:6px 12px;
+}
+.status-pill b{color:#fff;}
+
+/* ============================================================
+   WAVEFORM (strip-chart recorder style)
+   ============================================================ */
+.wave-scroll{overflow-x:auto;border:1px solid var(--line-strong);border-radius:3px;background:#f3efe1;}
+#waveCanvas{display:block;}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-soft);font-family:var(--mono);}
+.legend-swatch{width:13px;height:3px;border-radius:1px;}
+
+/* ============================================================
+   LOG (console)
+   ============================================================ */
+.console-frame{background:var(--bezel);border-radius:4px;padding:3px;}
+#log{
+  font-family:var(--mono);font-size:11px;color:#c9b98a;background:var(--oled-bg);
+  max-height:190px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:3px;
+  padding:12px 13px;border-radius:2px;
+}
+.log-entry{white-space:pre-wrap;}
+.log-entry.hl{color:var(--oled-fg);font-weight:600;}
+.log-entry.ok{color:#8fe0a3;font-weight:600;}
+.log-entry.err{color:#e2857c;font-weight:600;}
+
+footer{
+  text-align:center;color:var(--ink-soft);font-size:11px;margin-top:16px;
+  font-family:var(--mono);line-height:1.6;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ TITLE ============ -->
+  <header class="nameplate-title">
+    <h1>Implementación en Hardware de un Verificador CRC-8 con Buffer RAM y Módulo de Sensado de Proximidad para Nodos de Seguridad Perimetral IoT sobre ESP32-C3</h1>
+  </header>
+
+  <!-- ============ INTERACTIVE BOARDS ============ -->
+  <section class="boards-section">
+
+    <div class="board">
+      <span class="screw tl"></span><span class="screw tr"></span>
+      <span class="screw bl"></span><span class="screw br"></span>
+      <div class="board-tag">
+        <span class="board-chip">ESP32-C3 SUPER MINI</span>
+        <span class="board-name">Nodo Emisor</span>
+      </div>
+      <div class="pin-row">
+        <span class="pin">GND</span><span class="pin">3V3</span>
+        <span class="pin hi">GPIO1 · SENSOR OUT</span>
+      </div>
+      <div class="board-body">
+        <div class="oled-frame"><pre class="oled" id="oledEmisor"></pre></div>
+        <div class="sensor-unit">
+          <div class="sensor-label">Sensor IR<br>proximidad</div>
+          <div class="toggle" id="sensorToggle"><div class="thumb"></div></div>
+          <div class="toggle-txt" id="sensorTxt">DESPEJADO</div>
+        </div>
+        <div class="buttons">
+          <div class="btn-row">
+            <button class="phys-btn" id="btn0">BTN_0 · GPIO3</button>
+            <span class="btn-hint" id="hint0">NO / cursor ◀</span>
+          </div>
+          <div class="btn-row">
+            <button class="phys-btn" id="btn1">BTN_1 · GPIO2</button>
+            <span class="btn-hint" id="hint1">SÍ / cursor ▶</span>
+          </div>
+          <div class="btn-row">
+            <button class="phys-btn" id="btnTx">BTN_TX · GPIO4</button>
+            <span class="btn-hint" id="hintTx">Capturar snapshot</span>
+          </div>
+        </div>
+      </div>
+      <div class="pin-row">
+        <span class="pin">RX · 20</span><span class="pin hi">TX · 21 →</span>
+      </div>
+    </div>
+
+    <div class="uart-link" id="uartLink">
+      <div class="link-label">UART<br>9600 8N1</div>
+      <div class="link-line"></div>
+      <div class="link-arrow">TX → RX</div>
+      <div class="link-label">GND común</div>
+    </div>
+
+    <div class="board">
+      <span class="screw tl"></span><span class="screw tr"></span>
+      <span class="screw bl"></span><span class="screw br"></span>
+      <div class="board-tag">
+        <span class="board-chip">ESP32-C3 SUPER MINI</span>
+        <span class="board-name">Nodo Receptor</span>
+      </div>
+      <div class="pin-row">
+        <span class="pin hi">RX · 20 ← TX</span><span class="pin">TX · 21</span>
+      </div>
+      <div class="board-body">
+        <div class="oled-frame"><pre class="oled" id="oledReceptor"></pre></div>
+        <div class="indicators">
+          <div class="led-wrap"><div class="led led-green" id="ledVerde"></div><label>LED verde · GPIO4 (íntegro)</label></div>
+          <div class="led-wrap"><div class="led led-red" id="ledRojo"></div><label>LED rojo · GPIO3 (corrupto)</label></div>
+        </div>
+      </div>
+      <div class="pin-row">
+        <span class="pin">GND</span><span class="pin">3V3</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============ LIVE REGISTERS ============ -->
+  <section class="card">
+    <h2>Registro emisor · data[ ] (payload antes de transmitir)</h2>
+    <p class="desc">Se llena por completo al presionar BTN_TX en estado de monitoreo. El cursor (fase de inyección de error) selecciona un byte completo, no un bit.</p>
+    <div class="reg-strip" id="emisorReg"></div>
+  </section>
+
+  <section class="card">
+    <h2>Registro receptor · bufferRAM[16] (recepción en curso)</h2>
+    <p class="desc">Cada casilla se escribe secuencialmente conforme addr_counter avanza durante la recepción UART.</p>
+    <div class="reg-strip" id="receptorReg"></div>
+  </section>
+
+  <!-- ============ CONTROLS ============ -->
+  <section class="card controls-section">
+    <h2 style="margin:0;padding:0;border:none;flex:0 0 auto;">Controles</h2>
+    <button class="reset-btn" id="resetBtn">↺ Reiniciar banco</button>
+    <div class="control-group">
+      <label for="speed">Velocidad TX:</label>
+      <select id="speed">
+        <option value="900">Lenta</option>
+        <option value="500" selected>Normal</option>
+        <option value="220">Rápida</option>
+      </select>
+    </div>
+    <div class="status-pill" id="statusEmisor">EMISOR: <b>INPUT_BYTES</b></div>
+    <div class="status-pill" id="statusReceptor">RECEPTOR: <b>S_IDLE</b> (addr=0)</div>
+  </section>
+
+  <!-- ============ WAVEFORM ============ -->
+  <section class="card">
+    <h2>Registrador de señales · transmisión byte a byte</h2>
+    <p class="desc">Cada columna corresponde a un byte de la trama: ID de cámara, estado de proximidad, orden de actuación, contador de secuencia, relleno y CRC-8.</p>
+    <div class="wave-scroll">
+      <canvas id="waveCanvas"></canvas>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-swatch" style="background:#3a331f"></span> Líneas digitales (PIN_SENSOR / UART_TX / RX_BUSY)</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#3c7a4c"></span> LED_VERDE</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#8a3a34"></span> LED_ROJO</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#efe8d5;border:1px solid #b3a684"></span> Valores de bus (hex)</div>
+    </div>
+  </section>
+
+  <!-- ============ LOG ============ -->
+  <section class="card">
+    <h2>Consola de eventos (equivalente a monitor USB-CDC)</h2>
+    <div class="console-frame"><div id="log"></div></div>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   CAMPOS DE LA TRAMA (Tabla III del artículo)
+   ============================================================ */
+const FIELDS = [
+  {f:'ID',  b:'Cámara'},
+  {f:'EST', b:'Proxim.'},
+  {f:'ORD', b:'Actuac.'},
+  {f:'SEQ', b:'Contador'},
+  {f:'R01', b:'Relleno'}, {f:'R02', b:'Relleno'}, {f:'R03', b:'Relleno'},
+  {f:'R04', b:'Relleno'}, {f:'R05', b:'Relleno'}, {f:'R06', b:'Relleno'},
+  {f:'R07', b:'Relleno'}, {f:'R08', b:'Relleno'}, {f:'R09', b:'Relleno'},
+  {f:'R10', b:'Relleno'}, {f:'R11', b:'Relleno'},
+  {f:'CRC', b:'0x07'}
+];
+
+/* ============================================================
+   ESTADO GLOBAL
+   ============================================================ */
+let emisor, receptor, waveCols, simRunning = false, speedMs = 500;
+let seqCounter = 0;
+
+function freshEmisor(){
+  return {
+    uiState:'INPUT_BYTES',
+    sensorOn:false,
+    data: new Array(15).fill(null),
+    crc:null,
+    cursor:0,
+    errorByte:-1
+  };
+}
+function freshReceptor(){
+  return { buffer:new Array(16).fill(null), addr:0, state:'S_IDLE', ledV:false, ledR:false, crcCalc:null };
+}
+
+/* ============================================================
+   CRC-8 (polinomio 0x07) -- idéntico al firmware real
+   ============================================================ */
+function crc8(bytes){
+  let crc = 0x00;
+  for(const b of bytes){
+    crc ^= b;
+    for(let j=0;j<8;j++){
+      crc = (crc & 0x80) ? ((crc << 1) ^ 0x07) & 0xFF : (crc << 1) & 0xFF;
+    }
+  }
+  return crc;
+}
+function hex2(n){ return n.toString(16).toUpperCase().padStart(2,'0'); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* ============================================================
+   SENSOR (toggle skeuomórfico)
+   ============================================================ */
+function toggleSensor(){
+  if(simRunning) return;
+  emisor.sensorOn = !emisor.sensorOn;
+  document.getElementById('sensorToggle').classList.toggle('on', emisor.sensorOn);
+  document.getElementById('sensorTxt').textContent = emisor.sensorOn ? 'INTRUSO' : 'DESPEJADO';
+  document.getElementById('sensorTxt').classList.toggle('active', emisor.sensorOn);
+  if(emisor.uiState === 'INPUT_BYTES'){
+    log(`Sensor GPIO1: ${emisor.sensorOn ? '1 (objeto detectado)' : '0 (zona despejada)'}`);
+    renderEmisor();
+  }
+}
+
+/* ============================================================
+   CAPTURA DE LA TRAMA (equivalente a case INPUT_BYTES del firmware)
+   ============================================================ */
+function buildFrame(){
+  const d = emisor.data;
+  d[0] = 0xC1;                              // ID de cámara / sector
+  d[1] = emisor.sensorOn ? 0x01 : 0x00;     // estado de proximidad
+  d[2] = emisor.sensorOn ? 0xFF : 0x00;     // orden de actuación
+  d[3] = seqCounter & 0xFF;                 // contador de secuencia
+  seqCounter++;
+  for(let i=4;i<15;i++) d[i] = 0x00;        // relleno
+  emisor.crc = crc8(d);
+}
+
+/* ============================================================
+   BOTONES DEL EMISOR
+   ============================================================ */
+function onBtn0(){
+  if(simRunning) return;
+  switch(emisor.uiState){
+    case 'ASK_ERROR':
+      emisor.uiState = 'READY_TX'; emisor.errorByte = -1;
+      log('Emisor: NO inyectar error → READY_TX', 'hl');
+      break;
+    case 'SELECT_ERROR':
+      if(emisor.cursor > 0) emisor.cursor--;
+      break;
+  }
+  renderEmisor();
+}
+
+function onBtn1(){
+  if(simRunning) return;
+  switch(emisor.uiState){
+    case 'ASK_ERROR':
+      emisor.uiState = 'SELECT_ERROR'; emisor.cursor = 0;
+      log('Emisor: SÍ inyectar error → SELECT_ERROR', 'hl');
+      break;
+    case 'SELECT_ERROR':
+      if(emisor.cursor < 14) emisor.cursor++;
+      break;
+  }
+  renderEmisor();
+}
+
+function onBtnTx(){
+  if(simRunning) return;
+  if(emisor.uiState === 'INPUT_BYTES'){
+    buildFrame();
+    emisor.uiState = 'ASK_ERROR';
+    log(`Emisor: snapshot capturado (sensor=${emisor.sensorOn?1:0}). CRC-8 = 0x${hex2(emisor.crc)} → ASK_ERROR`, 'hl');
+  } else if(emisor.uiState === 'SELECT_ERROR'){
+    const before = emisor.data[emisor.cursor];
+    emisor.data[emisor.cursor] ^= 0x01;
+    emisor.errorByte = emisor.cursor;
+    emisor.uiState = 'READY_TX';
+    log(`Emisor: data[${emisor.cursor}] ^= 0x01  (0x${hex2(before)} → 0x${hex2(emisor.data[emisor.cursor])}) → READY_TX`, 'hl');
+  } else if(emisor.uiState === 'READY_TX'){
+    startTransmission();
+    return;
+  }
+  renderEmisor();
+}
+
+/* ============================================================
+   TRANSMISIÓN UART -> RECEPTOR (animada)
+   ============================================================ */
+async function startTransmission(){
+  simRunning = true;
+  const payload = [...emisor.data, emisor.crc];
+  receptor = freshReceptor();
+  waveCols = [];
+  emisor.uiState = 'TRANSMITTING';
+  document.getElementById('uartLink').classList.add('active');
+  renderEmisor(); renderReceptor(); renderLeds(); renderWave(); updateStatus();
+  log('--- Iniciando transmisión UART (16 bytes: payload de seguridad + CRC) ---', 'hl');
+
+  for(let i=0;i<16;i++){
+    receptor.state = 'S_RX';
+    renderReceptor(); updateStatus();
+    await sleep(speedMs * 0.45);
+
+    receptor.state = 'S_WRITE';
+    receptor.buffer[i] = payload[i];
+    receptor.addr = i + 1;
+
+    const col = { idx:i, val:payload[i], addr:i+1, fsm:(i<15?'WRITE':'VERIFY'), ledV:0, ledR:0, sensor: emisor.sensorOn?1:0 };
+
+    if(i < 15){
+      receptor.state = 'S_IDLE';
+      log(`UART → byte ${i} [${FIELDS[i].f}] = 0x${hex2(payload[i])} escrito en bufferRAM[${i}]  | addr_counter=${receptor.addr}`);
+    } else {
+      receptor.state = 'S_VERIFY';
+      receptor.crcCalc = crc8(receptor.buffer.slice(0,15));
+      log(`UART → byte 15 [CRC] recibido = 0x${hex2(payload[i])} escrito en bufferRAM[15]  | addr_counter=16`);
+      log(`Receptor: S_VERIFY → CRC calculado = 0x${hex2(receptor.crcCalc)}  vs  CRC recibido = 0x${hex2(receptor.buffer[15])}`);
+      if(receptor.buffer[15] === receptor.crcCalc){
+        receptor.ledV = true; col.ledV = 1;
+        log('Receptor: coinciden → LED_VERDE = HIGH (paquete íntegro, cámara activada si INTRUSO)', 'ok');
+      } else {
+        receptor.ledR = true; col.ledR = 1;
+        log('Receptor: NO coinciden → LED_ROJO = HIGH (paquete descartado)', 'err');
+      }
+    }
+
+    waveCols.push(col);
+    renderReceptor(); renderLeds(); renderWave(); renderReceptorReg(); updateStatus();
+    await sleep(speedMs * 0.55);
+  }
+
+  document.getElementById('uartLink').classList.remove('active');
+  await sleep(1000);
+  emisor = freshEmisor();
+  document.getElementById('sensorToggle').classList.remove('on');
+  document.getElementById('sensorTxt').textContent = 'DESPEJADO';
+  document.getElementById('sensorTxt').classList.remove('active');
+  simRunning = false;
+  renderEmisor(); updateStatus();
+  log('--- Transmisión finalizada. Emisor reiniciado → INPUT_BYTES ---', 'hl');
+}
+
+/* ============================================================
+   RENDER · OLED EMISOR
+   ============================================================ */
+function renderEmisor(){
+  const L = [];
+  L.push('EMISOR');
+  L.push('─'.repeat(23));
+  switch(emisor.uiState){
+    case 'INPUT_BYTES':
+      L.push('Monitoreo en vivo:');
+      L.push('');
+      L.push(emisor.sensorOn ? '>> INTRUSO <<' : '-- Despejado --');
+      L.push('');
+      L.push('─'.repeat(23));
+      L.push('[BTN_TX] = congelar/TX');
+      break;
+    case 'ASK_ERROR':
+      L.push('Captura completa.');
+      L.push(`ID=0xC1 EST=0x${hex2(emisor.data[1])}`);
+      L.push(`ORD=0x${hex2(emisor.data[2])} SEQ=${emisor.data[3]}`);
+      L.push('¿Inyectar error?');
+      L.push('─'.repeat(23));
+      L.push('[BTN_0]=NO  [BTN_1]=SÍ');
+      break;
+    case 'SELECT_ERROR':
+      L.push(`Seleccione byte ${emisor.cursor}/14`);
+      L.push('');
+      L.push(`campo: ${FIELDS[emisor.cursor].f}  valor: 0x${hex2(emisor.data[emisor.cursor])}`);
+      L.push('');
+      L.push('─'.repeat(23));
+      L.push('◀[BTN_0]  [BTN_1]▶  [TX]=OK');
+      break;
+    case 'READY_TX':
+      L.push('Payload final:');
+      L.push(emisor.data.map(hex2).join(' ').slice(0,44));
+      L.push('');
+      L.push(`CRC-8: 0x${hex2(emisor.crc)}`);
+      L.push('─'.repeat(23));
+      L.push('Pulse TX para enviar');
+      break;
+    case 'TRANSMITTING':
+      L.push('Payload final:');
+      L.push(emisor.data.map(hex2).join(' ').slice(0,44));
+      L.push('');
+      L.push(`CRC-8: 0x${hex2(emisor.crc)}`);
+      L.push('─'.repeat(23));
+      L.push('>> TRANSMITIENDO >>');
+      break;
+  }
+  document.getElementById('oledEmisor').textContent = L.join('\n');
+  updateButtonHints();
+  updateStatus();
+  renderEmisorReg();
+}
+
+/* ============================================================
+   RENDER · OLED RECEPTOR
+   ============================================================ */
+function renderReceptor(){
+  const L = [];
+  L.push('RECEPTOR');
+  L.push('─'.repeat(23));
+
+  if(receptor.addr === 0 && receptor.state === 'S_IDLE'){
+    L.push('');
+    L.push('ESPERANDO DATOS...');
+    L.push('');
+    L.push('─'.repeat(23));
+    L.push('Escuchando UART');
+  } else if(receptor.addr < 16){
+    L.push(`Estado FSM: ${receptor.state}`);
+    L.push('');
+    let bar = '';
+    for(let i=0;i<16;i++) bar += (i < receptor.addr) ? '#' : '.';
+    L.push('[' + bar + ']');
+    L.push('');
+    L.push(`addr_counter = ${receptor.addr}/16`);
+  } else {
+    const intruso = receptor.buffer[1] === 0x01;
+    L.push(`Rx CRC : 0x${hex2(receptor.buffer[15])}`);
+    L.push(`Calc   : 0x${hex2(receptor.crcCalc)}`);
+    L.push('─'.repeat(23));
+    if(receptor.ledV){
+      L.push(intruso ? 'CAM 01 ALERTA:' : 'CAM 01 STANDBY:');
+      L.push(intruso ? 'INTRUSO -> GRABANDO' : 'ZONA DESPEJADA');
+    } else {
+      L.push('INTEGRIDAD: ERROR');
+      L.push('Paquete descartado');
+    }
+  }
+  document.getElementById('oledReceptor').textContent = L.join('\n');
+}
+
+/* ============================================================
+   RENDER · LEDs y BOTONES
+   ============================================================ */
+function renderLeds(){
+  document.getElementById('ledVerde').classList.toggle('on', receptor.ledV);
+  document.getElementById('ledRojo').classList.toggle('on', receptor.ledR);
+}
+
+function updateButtonHints(){
+  const b0 = document.getElementById('btn0');
+  const b1 = document.getElementById('btn1');
+  const bt = document.getElementById('btnTx');
+  const h0 = document.getElementById('hint0');
+  const h1 = document.getElementById('hint1');
+  const ht = document.getElementById('hintTx');
+
+  b0.disabled = b1.disabled = bt.disabled = simRunning;
+
+  switch(emisor.uiState){
+    case 'INPUT_BYTES':
+      h0.textContent = '(sin función)'; h1.textContent = '(sin función)';
+      ht.textContent = 'Capturar snapshot del sensor';
+      b0.disabled = b1.disabled = true;
+      break;
+    case 'ASK_ERROR':
+      h0.textContent = 'NO inyectar error'; h1.textContent = 'SÍ inyectar error';
+      ht.textContent = '(deshabilitado)'; bt.disabled = true;
+      break;
+    case 'SELECT_ERROR':
+      h0.textContent = '◀ byte anterior'; h1.textContent = 'byte siguiente ▶';
+      ht.textContent = 'Confirmar alteración (XOR 0x01)';
+      break;
+    case 'READY_TX':
+      h0.textContent = '(sin función)'; h1.textContent = '(sin función)';
+      ht.textContent = 'Transmitir paquete (16 bytes)';
+      b0.disabled = b1.disabled = true;
+      break;
+    case 'TRANSMITTING':
+      h0.textContent = '(sin función)'; h1.textContent = '(sin función)';
+      ht.textContent = 'Transmitiendo…';
+      break;
+  }
+}
+
+function updateStatus(){
+  document.getElementById('statusEmisor').innerHTML =
+    `EMISOR: <b>${emisor.uiState}</b>`;
+  document.getElementById('statusReceptor').innerHTML =
+    `RECEPTOR: <b>${receptor.state}</b> (addr=${receptor.addr})`;
+}
+
+/* ============================================================
+   RENDER · REGISTROS EN VIVO (estilo visor de memoria)
+   ============================================================ */
+function renderEmisorReg(){
+  const strip = document.getElementById('emisorReg');
+  strip.innerHTML = '';
+  for(let i=0;i<16;i++){
+    const cell = document.createElement('div');
+    let cls = 'reg-cell' + (i === 15 ? ' crc' : '');
+    const val = i === 15 ? emisor.crc : emisor.data[i];
+    if(val === null || val === undefined) cls += ' empty';
+    if(emisor.uiState === 'SELECT_ERROR' && i === emisor.cursor) cls += ' cursor';
+    if(emisor.errorByte === i) cls += ' hit-err';
+    cell.className = cls;
+    cell.innerHTML = `<div class="f">${FIELDS[i].f}</div><div class="b">${FIELDS[i].b}</div><div class="val">${(val===null||val===undefined) ? '--' : '0x'+hex2(val)}</div>`;
+    strip.appendChild(cell);
+  }
+}
+
+function renderReceptorReg(){
+  const strip = document.getElementById('receptorReg');
+  strip.innerHTML = '';
+  for(let i=0;i<16;i++){
+    const cell = document.createElement('div');
+    let cls = 'reg-cell' + (i === 15 ? ' crc' : '');
+    const val = receptor ? receptor.buffer[i] : null;
+    if(val === null || val === undefined) cls += ' empty';
+    if(i === 15 && val !== null && val !== undefined){
+      cls += receptor.ledV ? ' hit-ok' : (receptor.ledR ? ' hit-err' : '');
+    }
+    cell.className = cls;
+    cell.innerHTML = `<div class="f">${FIELDS[i].f}</div><div class="b">${FIELDS[i].b}</div><div class="val">${(val===null||val===undefined) ? '--' : '0x'+hex2(val)}</div>`;
+    strip.appendChild(cell);
+  }
+}
+
+/* ============================================================
+   RENDER · REGISTRADOR DE SEÑALES (canvas, estilo carta de trazo)
+   ============================================================ */
+const WAVE_ROWS = ['PIN_SENSOR','UART_TX','RX_BUSY','TX_BYTE','ADDR_CTR','FSM_RX','LED_VERDE','LED_ROJO'];
+
+function renderWave(){
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  const labelW = 98, colW = 58, rowH = 32, headerH = 26;
+
+  canvas.width = labelW + 16 * colW;
+  canvas.height = headerH + WAVE_ROWS.length * rowH;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#f3efe1';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.textBaseline = 'alphabetic';
+
+  // header (column labels = campos de la trama)
+  ctx.font = '600 10px "IBM Plex Mono", monospace';
+  ctx.fillStyle = '#5a5140';
+  ctx.textAlign = 'center';
+  for(let i=0;i<16;i++){
+    ctx.fillText(FIELDS[i].f, labelW + i*colW + colW/2, 17);
+  }
+  ctx.textAlign = 'left';
+
+  // highlight current column
+  if(simRunning && waveCols.length > 0){
+    const cur = waveCols.length - 1;
+    ctx.fillStyle = 'rgba(161,121,63,0.14)';
+    ctx.fillRect(labelW + cur*colW, 0, colW, canvas.height);
+  }
+
+  // grid lines
+  ctx.strokeStyle = '#c7bc9c';
+  ctx.lineWidth = 1;
+  for(let r=0;r<=WAVE_ROWS.length;r++){
+    ctx.beginPath();
+    ctx.moveTo(0, headerH + r*rowH + .5);
+    ctx.lineTo(canvas.width, headerH + r*rowH + .5);
+    ctx.stroke();
+  }
+  for(let i=0;i<=16;i++){
+    ctx.beginPath();
+    ctx.moveTo(labelW + i*colW + .5, 0);
+    ctx.lineTo(labelW + i*colW + .5, canvas.height);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(labelW + .5, 0); ctx.lineTo(labelW + .5, canvas.height); ctx.stroke();
+
+  // row labels
+  ctx.font = '600 10.5px "IBM Plex Mono", monospace';
+  ctx.fillStyle = '#211c13';
+  WAVE_ROWS.forEach((name,r)=>{
+    ctx.fillText(name, 8, headerH + r*rowH + rowH/2 + 4);
+  });
+
+  // data cells
+  for(let i=0;i<16;i++){
+    const x = labelW + i*colW;
+    const col = waveCols[i];
+    WAVE_ROWS.forEach((name,r)=>{
+      const y = headerH + r*rowH;
+      if(!col){
+        ctx.fillStyle = '#b3a684';
+        ctx.font = '11px monospace';
+        ctx.fillText('·', x + colW/2 - 3, y + rowH/2 + 4);
+        return;
+      }
+      drawCell(ctx, name, col, x, y, colW, rowH);
+    });
+  }
+}
+
+function drawCell(ctx, name, col, x, y, w, h){
+  switch(name){
+    case 'PIN_SENSOR': drawBinary(ctx, col.sensor, x, y, w, h, '#6f5228'); break;
+    case 'UART_TX':    drawBinary(ctx, 1,          x, y, w, h, '#3a331f'); break;
+    case 'RX_BUSY':    drawBinary(ctx, 1,          x, y, w, h, '#3a331f'); break;
+    case 'TX_BYTE':    drawValue(ctx, '0x'+hex2(col.val), x, y, w, h, false); break;
+    case 'ADDR_CTR':   drawValue(ctx, '0x'+hex2(col.addr), x, y, w, h, false); break;
+    case 'FSM_RX':     drawValue(ctx, col.fsm, x, y, w, h, true); break;
+    case 'LED_VERDE':  drawBinary(ctx, col.ledV, x, y, w, h, '#3c7a4c'); break;
+    case 'LED_ROJO':   drawBinary(ctx, col.ledR, x, y, w, h, '#8a3a34'); break;
+  }
+}
+
+function drawBinary(ctx, val, x, y, w, h, color){
+  const yHigh = y + 7, yLow = y + h - 7;
+  const yy = val ? yHigh : yLow;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 3, yy);
+  ctx.lineTo(x + w - 3, yy);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = color + '66';
+  ctx.beginPath();
+  ctx.moveTo(x + 3, yHigh); ctx.lineTo(x + 3, yLow);
+  ctx.stroke();
+}
+
+function drawValue(ctx, text, x, y, w, h, isText){
+  ctx.fillStyle = '#efe8d5';
+  ctx.fillRect(x + 4, y + 5, w - 8, h - 10);
+  ctx.strokeStyle = '#a1793f';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 4.5, y + 5.5, w - 9, h - 11);
+  ctx.fillStyle = '#211c13';
+  ctx.font = isText ? '600 9.5px "IBM Plex Sans", sans-serif' : '600 11.5px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, x + w/2, y + h/2 + 4);
+  ctx.textAlign = 'left';
+}
+
+/* ============================================================
+   LOG
+   ============================================================ */
+function log(msg, cls){
+  const el = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = 'log-entry' + (cls ? ' '+cls : '');
+  const t = new Date().toLocaleTimeString('es-PE', {hour12:false});
+  div.textContent = `[${t}] ${msg}`;
+  el.prepend(div);
+}
+
+/* ============================================================
+   RESET / INIT
+   ============================================================ */
+function resetAll(){
+  if(simRunning) return;
+  emisor = freshEmisor();
+  receptor = freshReceptor();
+  waveCols = [];
+  seqCounter = 0;
+  document.getElementById('uartLink').classList.remove('active');
+  document.getElementById('sensorToggle').classList.remove('on');
+  document.getElementById('sensorTxt').textContent = 'DESPEJADO';
+  document.getElementById('sensorTxt').classList.remove('active');
+  document.getElementById('log').innerHTML = '';
+  renderEmisor(); renderReceptor(); renderLeds(); renderWave(); renderReceptorReg(); updateStatus();
+  log('Banco de pruebas reiniciado.', 'hl');
+}
+
+window.addEventListener('load', () => {
+  emisor = freshEmisor();
+  receptor = freshReceptor();
+  waveCols = [];
+
+  renderEmisor(); renderReceptor(); renderLeds(); renderWave(); renderReceptorReg(); updateStatus();
+  log('Simulador listo. Ajuste el sensor y pulse BTN_TX para capturar el snapshot.', 'hl');
+
+  document.getElementById('btn0').addEventListener('click', onBtn0);
+  document.getElementById('btn1').addEventListener('click', onBtn1);
+  document.getElementById('btnTx').addEventListener('click', onBtnTx);
+  document.getElementById('sensorToggle').addEventListener('click', toggleSensor);
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+  document.getElementById('speed').addEventListener('change', e=>{
+    speedMs = parseInt(e.target.value, 10);
+  });
+});
+</script>
+</body>
+</html>
